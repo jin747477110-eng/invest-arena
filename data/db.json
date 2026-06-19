@@ -1,0 +1,43 @@
+{
+  "users": [
+    {
+      "id": "user1",
+      "slug": "player1",
+      "name": "选手一",
+      "nickname": "待定选手1",
+      "password": "123456",
+      "bio": "个性签名未设置",
+      "initCapital": 10000
+    },
+    {
+      "id": "user2",
+      "slug": "player2",
+      "name": "选手二",
+      "nickname": "待定选手2",
+      "password": "123456",
+      "bio": "个性签名未设置",
+      "initCapital": 10000
+    },
+    {
+      "id": "user3",
+      "slug": "player3",
+      "name": "选手三",
+      "nickname": "待定选手3",
+      "password": "123456",
+      "bio": "个性签名未设置",
+      "initCapital": 10000
+    },
+    {
+      "id": "user4",
+      "slug": "player4",
+      "name": "选手四",
+      "nickname": "待定选手4",
+      "password": "123456",
+      "bio": "个性签名未设置",
+      "initCapital": 10000
+    }
+  ],
+  "reports": [],
+  "seasonStart": "2026-07-01",
+  "seasonEnd": "2026-09-30"
+}
