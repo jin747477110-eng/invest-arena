@@ -7,7 +7,6 @@ export function middleware(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname === "/login";
   const isApiAuth = request.nextUrl.pathname.startsWith("/api/auth");
 
-  // Allow login page and auth API without token
   if (isLoginPage || isApiAuth) {
     return NextResponse.next();
   }
