@@ -4,8 +4,7 @@ import { addReport, getReports, updateReport, deleteReport } from "@/lib/data";
 // GET: list reports (all or filtered by userId)
 export async function GET(request: NextRequest) {
   const userId = request.nextUrl.searchParams.get("userId") || undefined;
-  const reports = getReports(userId);
-  // Return newest first
+  const reports = await getReports(userId);
   reports.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return NextResponse.json(reports);
 }
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "总资产不能为负数" }, { status: 400 });
   }
 
-  const report = addReport(token, totalAsset, date, note || "");
+  const report = await addReport(token, totalAsset, date, note || "");
   return NextResponse.json(report);
 }
 
@@ -35,7 +34,7 @@ export async function PUT(request: NextRequest) {
   if (!token) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { reportId, totalAsset, date, note } = await request.json();
-  const result = updateReport(reportId, token, { totalAsset, date, note });
+  const result = await updateReport(reportId, token, { totalAsset, date, note });
   if (!result) return NextResponse.json({ error: "修改失败（记录不存在、非本人或已超过24小时）" }, { status: 400 });
   return NextResponse.json(result);
 }
@@ -46,7 +45,7 @@ export async function DELETE(request: NextRequest) {
   if (!token) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { reportId } = await request.json();
-  const ok = deleteReport(reportId, token);
+  const ok = await deleteReport(reportId, token);
   if (!ok) return NextResponse.json({ error: "删除失败（记录不存在、非本人或已超过24小时）" }, { status: 400 });
   return NextResponse.json({ ok: true });
 }

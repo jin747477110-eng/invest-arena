@@ -1,7 +1,4 @@
-import fs from "fs";
-import path from "path";
-
-const DB_PATH = path.join(process.cwd(), "data", "db.json");
+import { supabase } from "./supabase";
 
 export interface User {
   id: string;
@@ -22,68 +19,56 @@ export interface Report {
   createdAt: string;
 }
 
-interface DB {
-  users: User[];
-  reports: Report[];
-  seasonStart: string;
-  seasonEnd: string;
+// ── Users ──
+
+export async function getUsers(): Promise<User[]> {
+  const { data } = await supabase.from("users").select("*");
+  return (data || []) as User[];
 }
 
-function readDB(): DB {
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(raw);
+export async function getUserBySlug(slug: string): Promise<User | undefined> {
+  const { data } = await supabase.from("users").select("*").eq("slug", slug).single();
+  return data as User | undefined;
 }
 
-function writeDB(db: DB): void {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf-8");
+export async function getUserById(id: string): Promise<User | undefined> {
+  const { data } = await supabase.from("users").select("*").eq("id", id).single();
+  return data as User | undefined;
 }
 
-// ---- Users ----
-
-export function getUsers(): User[] {
-  return readDB().users;
+export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
+  const { data } = await supabase.from("users").update(updates).eq("id", id).select().single();
+  return data as User | null;
 }
 
-export function getUserBySlug(slug: string): User | undefined {
-  return readDB().users.find((u) => u.slug === slug);
+// ── Reports ──
+
+export async function getReports(userId?: string): Promise<Report[]> {
+  let query = supabase.from("reports").select("*");
+  if (userId) query = query.eq("userId", userId);
+  const { data } = await query.order("createdAt", { ascending: false });
+  // Map userId (DB column) to userId (camelCase for frontend)
+  return (data || []).map(mapReport);
 }
 
-export function getUserById(id: string): User | undefined {
-  return readDB().users.find((u) => u.id === id);
+export async function getLatestReport(userId: string): Promise<Report | undefined> {
+  const { data } = await supabase
+    .from("reports")
+    .select("*")
+    .eq("userId", userId)
+    .order("createdAt", { ascending: false })
+    .limit(1)
+    .single();
+  return data ? mapReport(data) : undefined;
 }
 
-export function updateUser(id: string, data: Partial<User>): User | null {
-  const db = readDB();
-  const idx = db.users.findIndex((u) => u.id === id);
-  if (idx === -1) return null;
-  db.users[idx] = { ...db.users[idx], ...data };
-  writeDB(db);
-  return db.users[idx];
-}
-
-// ---- Reports ----
-
-export function getReports(userId?: string): Report[] {
-  const reports = readDB().reports;
-  if (userId) return reports.filter((r) => r.userId === userId);
-  return reports;
-}
-
-export function getLatestReport(userId: string): Report | undefined {
-  const reports = readDB()
-    .reports.filter((r) => r.userId === userId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return reports[0];
-}
-
-export function addReport(
+export async function addReport(
   userId: string,
   totalAsset: number,
   date: string,
   note: string
-): Report {
-  const db = readDB();
-  const report: Report = {
+): Promise<Report> {
+  const report = {
     id: "r" + Date.now() + Math.random().toString(36).slice(2, 6),
     userId,
     date,
@@ -91,67 +76,75 @@ export function addReport(
     note,
     createdAt: new Date().toISOString(),
   };
-  db.reports.push(report);
-  writeDB(db);
+  await supabase.from("reports").insert(report);
   return report;
 }
 
-export function updateReport(
+export async function updateReport(
   reportId: string,
   userId: string,
-  data: { totalAsset?: number; note?: string; date?: string }
-): Report | null {
-  const db = readDB();
-  const idx = db.reports.findIndex((r) => r.id === reportId);
-  if (idx === -1) return null;
-  // Only allow editing your own report
-  if (db.reports[idx].userId !== userId) return null;
-  // Only allow editing within 24 hours
-  const created = new Date(db.reports[idx].createdAt).getTime();
+  updates: { totalAsset?: number; note?: string; date?: string }
+): Promise<Report | null> {
+  // Check ownership and 24h window
+  const { data: existing } = await supabase
+    .from("reports")
+    .select("*")
+    .eq("id", reportId)
+    .single();
+
+  if (!existing) return null;
+  if (existing.userId !== userId) return null;
+
+  const created = new Date(existing.createdAt).getTime();
   if (Date.now() - created > 24 * 60 * 60 * 1000) return null;
 
-  db.reports[idx] = { ...db.reports[idx], ...data };
-  writeDB(db);
-  return db.reports[idx];
+  const { data } = await supabase
+    .from("reports")
+    .update(updates)
+    .eq("id", reportId)
+    .select()
+    .single();
+
+  return data ? mapReport(data) : null;
 }
 
-export function deleteReport(reportId: string, userId: string): boolean {
-  const db = readDB();
-  const idx = db.reports.findIndex((r) => r.id === reportId);
-  if (idx === -1) return false;
-  if (db.reports[idx].userId !== userId) return false;
-  // Only allow deleting within 24 hours
-  const created = new Date(db.reports[idx].createdAt).getTime();
+export async function deleteReport(reportId: string, userId: string): Promise<boolean> {
+  const { data: existing } = await supabase
+    .from("reports")
+    .select("*")
+    .eq("id", reportId)
+    .single();
+
+  if (!existing) return false;
+  if (existing.userId !== userId) return false;
+
+  const created = new Date(existing.createdAt).getTime();
   if (Date.now() - created > 24 * 60 * 60 * 1000) return false;
 
-  db.reports.splice(idx, 1);
-  writeDB(db);
-  return true;
+  const { error } = await supabase.from("reports").delete().eq("id", reportId);
+  return !error;
 }
 
-// ---- Rankings ----
+// ── Rankings ──
 
-export function getRankings(): {
-  userId: string;
-  slug: string;
-  name: string;
-  nickname: string;
-  totalAsset: number;
-  initCapital: number;
-  returnRate: number;
-  reportCount: number;
-}[] {
-  const users = readDB().users;
-  const reports = readDB().reports;
+export async function getRankings(): Promise<
+  {
+    userId: string;
+    slug: string;
+    name: string;
+    nickname: string;
+    totalAsset: number;
+    initCapital: number;
+    returnRate: number;
+    reportCount: number;
+  }[]
+> {
+  const { data: users } = await supabase.from("users").select("*");
+  const { data: reports } = await supabase.from("reports").select("*").order("createdAt", { ascending: false });
 
-  const rankings = users.map((user) => {
-    const userReports = reports
-      .filter((r) => r.userId === user.id)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    const latestAsset =
-      userReports.length > 0 ? userReports[0].totalAsset : user.initCapital;
-
+  const rankings = (users || []).map((user: any) => {
+    const userReports = (reports || []).filter((r: any) => r.userId === user.id);
+    const latestAsset = userReports.length > 0 ? userReports[0].totalAsset : user.initCapital;
     const returnRate = ((latestAsset - user.initCapital) / user.initCapital) * 100;
 
     return {
@@ -166,14 +159,27 @@ export function getRankings(): {
     };
   });
 
-  // Sort by return rate descending
   rankings.sort((a, b) => b.returnRate - a.returnRate);
   return rankings;
 }
 
-// ---- Season ----
+// ── Season ──
 
-export function getSeasonInfo() {
-  const db = readDB();
-  return { seasonStart: db.seasonStart, seasonEnd: db.seasonEnd };
+export async function getSeasonInfo() {
+  const { data } = await supabase.from("settings").select("*").single();
+  if (data) return { seasonStart: data.seasonStart, seasonEnd: data.seasonEnd };
+  return { seasonStart: "2026-07-01", seasonEnd: "2026-09-30" };
+}
+
+// ── Helper ──
+
+function mapReport(row: any): Report {
+  return {
+    id: row.id,
+    userId: row.userId,
+    date: row.date,
+    totalAsset: row.totalAsset,
+    note: row.note || "",
+    createdAt: row.createdAt,
+  };
 }
