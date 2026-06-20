@@ -1,33 +1,34 @@
 export async function onRequestGet({ env }) {
-  const raw = await env.INVEST_KV.get("db");
-  if (!raw) return new Response("[]", { headers: { "content-type": "application/json" } });
+  try {
+    const raw = await env.INVEST_KV.get("db");
+    if (!raw) return new Response("[]", { headers: { "content-type": "application/json" } });
 
-  const db = JSON.parse(raw);
-  const users = db.users || [];
-  const reports = db.reports || [];
+    const db = JSON.parse(raw);
+    const users = db.users || [];
+    const reports = db.reports || [];
 
-  const rankings = users.map((user) => {
-    const userReports = reports
-      .filter((r) => r.userId === user.id)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const rankings = users.map((user) => {
+      const userReports = reports
+        .filter((r) => r.userId === user.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const latestAsset = userReports.length > 0 ? userReports[0].totalAsset : user.initCapital;
+      const returnRate = ((latestAsset - user.initCapital) / user.initCapital) * 100;
+      return {
+        userId: user.id, slug: user.slug, name: user.name, nickname: user.nickname,
+        totalAsset: latestAsset, initCapital: user.initCapital,
+        returnRate: Math.round(returnRate * 100) / 100,
+        reportCount: userReports.length,
+      };
+    });
 
-    const latestAsset = userReports.length > 0 ? userReports[0].totalAsset : user.initCapital;
-    const returnRate = ((latestAsset - user.initCapital) / user.initCapital) * 100;
-
-    return {
-      userId: user.id,
-      slug: user.slug,
-      name: user.name,
-      nickname: user.nickname,
-      totalAsset: latestAsset,
-      initCapital: user.initCapital,
-      returnRate: Math.round(returnRate * 100) / 100,
-      reportCount: userReports.length,
-    };
-  });
-
-  rankings.sort((a, b) => b.returnRate - a.returnRate);
-  return new Response(JSON.stringify(rankings), {
-    headers: { "content-type": "application/json" },
-  });
+    rankings.sort((a, b) => b.returnRate - a.returnRate);
+    return new Response(JSON.stringify(rankings), {
+      headers: { "content-type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "Ranking错误: " + (e.message || String(e)) }),
+      { status: 500, headers: { "content-type": "application/json" } }
+    );
+  }
 }

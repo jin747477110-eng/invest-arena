@@ -19,26 +19,33 @@ async function getDB(env) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const { username, password } = await request.json();
-  const db = await getDB(env);
-  const user = db.users.find(
-    (u) => (u.slug === username || u.name === username) && u.password === password
-  );
+  try {
+    const { username, password } = await request.json();
+    const db = await getDB(env);
+    const user = db.users.find(
+      (u) => (u.slug === username || u.name === username) && u.password === password
+    );
 
-  if (!user) {
-    return new Response(JSON.stringify({ error: "用户名或密码错误" }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  return new Response(
-    JSON.stringify({ ok: true, user: { id: user.id, slug: user.slug, name: user.name, nickname: user.nickname } }),
-    {
-      headers: {
-        "content-type": "application/json",
-        "set-cookie": `invest_user=${user.id}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`,
-      },
+    if (!user) {
+      return new Response(JSON.stringify({ error: "用户名或密码错误" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
     }
-  );
+
+    return new Response(
+      JSON.stringify({ ok: true, user: { id: user.id, slug: user.slug, name: user.name, nickname: user.nickname } }),
+      {
+        headers: {
+          "content-type": "application/json",
+          "set-cookie": `invest_user=${user.id}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`,
+        },
+      }
+    );
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "服务器错误: " + (e.message || String(e)) }),
+      { status: 500, headers: { "content-type": "application/json" } }
+    );
+  }
 }
