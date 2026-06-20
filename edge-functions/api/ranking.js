@@ -1,10 +1,6 @@
 export async function onRequestGet({ env }) {
   const raw = await env.INVEST_KV.get("db");
-  if (!raw) {
-    return new Response(JSON.stringify([]), {
-      headers: { "content-type": "application/json" },
-    });
-  }
+  if (!raw) return new Response("[]", { headers: { "content-type": "application/json" } });
 
   const db = JSON.parse(raw);
   const users = db.users || [];
@@ -31,7 +27,6 @@ export async function onRequestGet({ env }) {
   });
 
   rankings.sort((a, b) => b.returnRate - a.returnRate);
-
   return new Response(JSON.stringify(rankings), {
     headers: { "content-type": "application/json" },
   });

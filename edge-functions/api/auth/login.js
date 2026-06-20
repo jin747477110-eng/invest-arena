@@ -1,4 +1,3 @@
-// 初始数据模板
 const DEFAULT_DB = {
   users: [
     { id: "user1", slug: "player1", name: "选手一", nickname: "待定选手1", password: "123456", bio: "个性签名未设置", initCapital: 10000 },
@@ -36,7 +35,6 @@ export async function onRequestPost({ request, env }) {
   return new Response(
     JSON.stringify({ ok: true, user: { id: user.id, slug: user.slug, name: user.name, nickname: user.nickname } }),
     {
-      status: 200,
       headers: {
         "content-type": "application/json",
         "set-cookie": `invest_user=${user.id}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`,
