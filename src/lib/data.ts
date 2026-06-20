@@ -1,28 +1,6 @@
-import fs from "fs";
-import path from "path";
+import { supabase } from "./supabase";
 
-// EdgeOne serverless 函数中，/tmp 是可写的临时目录
-// 本地开发时回退到 data/db.json
-const DB_PATH = (() => {
-  const tmpPath = "/tmp/db.json";
-  const localPath = path.join(process.cwd(), "data", "db.json");
-  // 优先 /tmp（EdgeOne），如果不存在则用本地路径
-  try {
-    if (fs.existsSync("/tmp")) return tmpPath;
-  } catch {}
-  return localPath;
-})();
-
-// 初始化：如果 /tmp/db.json 不存在，从本地文件复制
-function ensureDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    const seedPath = path.join(process.cwd(), "data", "db.json");
-    if (fs.existsSync(seedPath)) {
-      fs.copyFileSync(seedPath, DB_PATH);
-    }
-  }
-}
-
+// 类型定义（camelCase，和前端一致）
 export interface User {
   id: string;
   slug: string;
@@ -42,144 +20,147 @@ export interface Report {
   createdAt: string;
 }
 
-interface DB {
-  users: User[];
-  reports: Report[];
-  seasonStart: string;
-  seasonEnd: string;
+// ── Users ──
+
+export async function getUsers(): Promise<User[]> {
+  const { data } = await supabase.from("users").select("*");
+  return (data || []).map((u: any) => ({
+    id: u.id, slug: u.slug, name: u.name,
+    nickname: u.nickname, password: u.password,
+    bio: u.bio, initCapital: u.initcapital || 10000,
+  }));
 }
 
-function readDB(): DB {
-  ensureDB();
-  const raw = fs.readFileSync(DB_PATH, "utf-8");
-  return JSON.parse(raw);
-}
-
-function writeDB(db: DB): void {
-  ensureDB();
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf-8");
-}
-
-// ---- Users ----
-
-export function getUsers(): User[] {
-  return readDB().users;
-}
-
-export function getUserBySlug(slug: string): User | undefined {
-  return readDB().users.find((u) => u.slug === slug);
-}
-
-export function getUserById(id: string): User | undefined {
-  return readDB().users.find((u) => u.id === id);
-}
-
-export function updateUser(id: string, data: Partial<User>): User | null {
-  const db = readDB();
-  const idx = db.users.findIndex((u) => u.id === id);
-  if (idx === -1) return null;
-  db.users[idx] = { ...db.users[idx], ...data };
-  writeDB(db);
-  return db.users[idx];
-}
-
-// ---- Reports ----
-
-export function getReports(userId?: string): Report[] {
-  const reports = readDB().reports;
-  if (userId) return reports.filter((r) => r.userId === userId);
-  return reports;
-}
-
-export function getLatestReport(userId: string): Report | undefined {
-  const reports = readDB()
-    .reports.filter((r) => r.userId === userId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return reports[0];
-}
-
-export function addReport(
-  userId: string,
-  totalAsset: number,
-  date: string,
-  note: string
-): Report {
-  const db = readDB();
-  const report: Report = {
-    id: "r" + Date.now() + Math.random().toString(36).slice(2, 6),
-    userId,
-    date,
-    totalAsset,
-    note,
-    createdAt: new Date().toISOString(),
+export async function getUserBySlug(slug: string): Promise<User | undefined> {
+  const { data } = await supabase.from("users").select("*").eq("slug", slug).single();
+  if (!data) return undefined;
+  return {
+    id: data.id, slug: data.slug, name: data.name,
+    nickname: data.nickname, password: data.password,
+    bio: data.bio, initCapital: data.initcapital || 10000,
   };
-  db.reports.push(report);
-  writeDB(db);
-  return report;
 }
 
-export function updateReport(
-  reportId: string,
-  userId: string,
-  data: { totalAsset?: number; note?: string; date?: string }
-): Report | null {
-  const db = readDB();
-  const idx = db.reports.findIndex((r) => r.id === reportId);
-  if (idx === -1) return null;
-  if (db.reports[idx].userId !== userId) return null;
-  const created = new Date(db.reports[idx].createdAt).getTime();
+export async function getUserById(id: string): Promise<User | undefined> {
+  const { data } = await supabase.from("users").select("*").eq("id", id).single();
+  if (!data) return undefined;
+  return {
+    id: data.id, slug: data.slug, name: data.name,
+    nickname: data.nickname, password: data.password,
+    bio: data.bio, initCapital: data.initcapital || 10000,
+  };
+}
+
+export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
+  const dbUpdates: any = {};
+  if (updates.nickname !== undefined) dbUpdates.nickname = updates.nickname;
+  if (updates.password !== undefined) dbUpdates.password = updates.password;
+  if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
+
+  const { data } = await supabase.from("users").update(dbUpdates).eq("id", id).select().single();
+  if (!data) return null;
+  return {
+    id: data.id, slug: data.slug, name: data.name,
+    nickname: data.nickname, password: data.password,
+    bio: data.bio, initCapital: data.initcapital || 10000,
+  };
+}
+
+// ── Reports ──
+
+function mapReport(r: any): Report {
+  return {
+    id: r.id,
+    userId: r.userid,
+    date: r.date,
+    totalAsset: r.totalasset,
+    note: r.note || "",
+    createdAt: r.createdat,
+  };
+}
+
+export async function getReports(userId?: string): Promise<Report[]> {
+  let query = supabase.from("reports").select("*");
+  if (userId) query = query.eq("userid", userId);
+  const { data } = await query.order("createdat", { ascending: false });
+  return (data || []).map(mapReport);
+}
+
+export async function getLatestReport(userId: string): Promise<Report | undefined> {
+  const { data } = await supabase
+    .from("reports").select("*")
+    .eq("userid", userId)
+    .order("createdat", { ascending: false })
+    .limit(1).single();
+  return data ? mapReport(data) : undefined;
+}
+
+export async function addReport(
+  userId: string, totalAsset: number, date: string, note: string
+): Promise<Report> {
+  const row = {
+    id: "r" + Date.now() + Math.random().toString(36).slice(2, 6),
+    userid: userId, date, totalasset: totalAsset,
+    note: note || "",
+    createdat: new Date().toISOString(),
+  };
+  await supabase.from("reports").insert(row);
+  return mapReport(row);
+}
+
+export async function updateReport(
+  reportId: string, userId: string,
+  updates: { totalAsset?: number; note?: string; date?: string }
+): Promise<Report | null> {
+  const { data: existing } = await supabase.from("reports").select("*").eq("id", reportId).single();
+  if (!existing || existing.userid !== userId) return null;
+
+  const created = new Date(existing.createdat).getTime();
   if (Date.now() - created > 24 * 60 * 60 * 1000) return null;
 
-  db.reports[idx] = { ...db.reports[idx], ...data };
-  writeDB(db);
-  return db.reports[idx];
+  const dbUpdates: any = {};
+  if (updates.totalAsset !== undefined) dbUpdates.totalasset = updates.totalAsset;
+  if (updates.date !== undefined) dbUpdates.date = updates.date;
+  if (updates.note !== undefined) dbUpdates.note = updates.note;
+
+  const { data } = await supabase.from("reports").update(dbUpdates).eq("id", reportId).select().single();
+  return data ? mapReport(data) : null;
 }
 
-export function deleteReport(reportId: string, userId: string): boolean {
-  const db = readDB();
-  const idx = db.reports.findIndex((r) => r.id === reportId);
-  if (idx === -1) return false;
-  if (db.reports[idx].userId !== userId) return false;
-  const created = new Date(db.reports[idx].createdAt).getTime();
+export async function deleteReport(reportId: string, userId: string): Promise<boolean> {
+  const { data: existing } = await supabase.from("reports").select("*").eq("id", reportId).single();
+  if (!existing || existing.userid !== userId) return false;
+
+  const created = new Date(existing.createdat).getTime();
   if (Date.now() - created > 24 * 60 * 60 * 1000) return false;
 
-  db.reports.splice(idx, 1);
-  writeDB(db);
-  return true;
+  const { error } = await supabase.from("reports").delete().eq("id", reportId);
+  return !error;
 }
 
-// ---- Rankings ----
+// ── Rankings ──
 
-export function getRankings(): {
-  userId: string;
-  slug: string;
-  name: string;
-  nickname: string;
-  totalAsset: number;
-  initCapital: number;
-  returnRate: number;
-  reportCount: number;
-}[] {
-  const users = readDB().users;
-  const reports = readDB().reports;
+export async function getRankings() {
+  const { data: users } = await supabase.from("users").select("*");
+  const { data: reportsRaw } = await supabase.from("reports").select("*").order("createdat", { ascending: false });
 
-  const rankings = users.map((user) => {
-    const userReports = reports
-      .filter((r) => r.userId === user.id)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Supabase JS 可能自动转 camelCase，统一兼容两种列名
+  const reports = (reportsRaw || []).map((r: any) => ({
+    id: r.id,
+    userId: r.userid || r.userId,
+    totalAsset: r.totalasset || r.totalAsset,
+    date: r.date,
+    createdAt: r.createdat || r.createdAt,
+  }));
 
-    const latestAsset =
-      userReports.length > 0 ? userReports[0].totalAsset : user.initCapital;
-
-    const returnRate = ((latestAsset - user.initCapital) / user.initCapital) * 100;
-
+  const rankings = (users || []).map((user: any) => {
+    const userReports = reports.filter((r: any) => r.userId === user.id);
+    const initCapital = user.initcapital || 10000;
+    const latestAsset = userReports.length > 0 ? userReports[0].totalAsset : initCapital;
+    const returnRate = ((latestAsset - initCapital) / initCapital) * 100;
     return {
-      userId: user.id,
-      slug: user.slug,
-      name: user.name,
-      nickname: user.nickname,
-      totalAsset: latestAsset,
-      initCapital: user.initCapital,
+      userId: user.id, slug: user.slug, name: user.name, nickname: user.nickname,
+      totalAsset: latestAsset, initCapital,
       returnRate: Math.round(returnRate * 100) / 100,
       reportCount: userReports.length,
     };
@@ -189,9 +170,10 @@ export function getRankings(): {
   return rankings;
 }
 
-// ---- Season ----
+// ── Season ──
 
-export function getSeasonInfo() {
-  const db = readDB();
-  return { seasonStart: db.seasonStart, seasonEnd: db.seasonEnd };
+export async function getSeasonInfo() {
+  const { data } = await supabase.from("settings").select("*").single();
+  if (data) return { seasonStart: data.seasonstart, seasonEnd: data.seasonend };
+  return { seasonStart: "2026-07-01", seasonEnd: "2026-09-30" };
 }

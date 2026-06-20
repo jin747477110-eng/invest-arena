@@ -4,7 +4,7 @@ import { getUsers } from "@/lib/data";
 export async function POST(request: Request) {
   const { username, password } = await request.json();
 
-  const users = getUsers();
+  const users = await getUsers();
   const user = users.find(
     (u) => (u.slug === username || u.name === username) && u.password === password
   );
