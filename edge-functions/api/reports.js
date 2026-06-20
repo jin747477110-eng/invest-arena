@@ -1,10 +1,17 @@
+let memoryDB = null;
+
 async function getDB(env) {
-  const raw = await env.INVEST_KV.get("db");
-  return raw ? JSON.parse(raw) : { users: [], reports: [], settings: {} };
+  if (env.INVEST_KV) {
+    const raw = await env.INVEST_KV.get("db");
+    return raw ? JSON.parse(raw) : { users: [], reports: [], settings: {} };
+  }
+  if (!memoryDB) memoryDB = { users: [], reports: [], settings: {} };
+  return memoryDB;
 }
 
 async function saveDB(env, db) {
-  await env.INVEST_KV.put("db", JSON.stringify(db));
+  if (env.INVEST_KV) await env.INVEST_KV.put("db", JSON.stringify(db));
+  memoryDB = db;
 }
 
 function getUserId(request) {
@@ -29,9 +36,7 @@ export async function onRequestGet({ request, env }) {
     if (filterUserId) reports = reports.filter((r) => r.userId === filterUserId);
     reports.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return json(reports);
-  } catch (e) {
-    return json({ error: "GET错误: " + (e.message || String(e)) }, 500);
-  }
+  } catch (e) { return json({ error: "GET: " + e.message }, 500); }
 }
 
 export async function onRequestPost({ request, env }) {
@@ -43,17 +48,13 @@ export async function onRequestPost({ request, env }) {
     const db = await getDB(env);
     const report = {
       id: "r" + Date.now() + Math.random().toString(36).slice(2, 6),
-      userId, date, totalAsset,
-      note: note || "",
-      createdAt: new Date().toISOString(),
+      userId, date, totalAsset, note: note || "", createdAt: new Date().toISOString(),
     };
     if (!db.reports) db.reports = [];
     db.reports.push(report);
     await saveDB(env, db);
     return json(report);
-  } catch (e) {
-    return json({ error: "POST错误: " + (e.message || String(e)) }, 500);
-  }
+  } catch (e) { return json({ error: "POST: " + e.message }, 500); }
 }
 
 export async function onRequestPut({ request, env }) {
@@ -64,16 +65,13 @@ export async function onRequestPut({ request, env }) {
     const db = await getDB(env);
     const idx = (db.reports || []).findIndex((r) => r.id === reportId);
     if (idx === -1 || db.reports[idx].userId !== userId) return json({ error: "修改失败" }, 400);
-    const created = new Date(db.reports[idx].createdAt).getTime();
-    if (Date.now() - created > 86400000) return json({ error: "已超过24小时" }, 400);
+    if (Date.now() - new Date(db.reports[idx].createdAt).getTime() > 86400000) return json({ error: "已超过24小时" }, 400);
     if (totalAsset !== undefined) db.reports[idx].totalAsset = totalAsset;
     if (date !== undefined) db.reports[idx].date = date;
     if (note !== undefined) db.reports[idx].note = note;
     await saveDB(env, db);
     return json(db.reports[idx]);
-  } catch (e) {
-    return json({ error: "PUT错误: " + (e.message || String(e)) }, 500);
-  }
+  } catch (e) { return json({ error: "PUT: " + e.message }, 500); }
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -87,7 +85,5 @@ export async function onRequestDelete({ request, env }) {
     db.reports.splice(idx, 1);
     await saveDB(env, db);
     return json({ ok: true });
-  } catch (e) {
-    return json({ error: "DELETE错误: " + (e.message || String(e)) }, 500);
-  }
+  } catch (e) { return json({ error: "DELETE: " + e.message }, 500); }
 }

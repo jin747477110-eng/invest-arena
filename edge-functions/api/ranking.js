@@ -1,6 +1,9 @@
 export async function onRequestGet({ env }) {
   try {
-    const raw = await env.INVEST_KV.get("db");
+    let raw;
+    if (env.INVEST_KV) {
+      raw = await env.INVEST_KV.get("db");
+    }
     if (!raw) return new Response("[]", { headers: { "content-type": "application/json" } });
 
     const db = JSON.parse(raw);
@@ -16,8 +19,7 @@ export async function onRequestGet({ env }) {
       return {
         userId: user.id, slug: user.slug, name: user.name, nickname: user.nickname,
         totalAsset: latestAsset, initCapital: user.initCapital,
-        returnRate: Math.round(returnRate * 100) / 100,
-        reportCount: userReports.length,
+        returnRate: Math.round(returnRate * 100) / 100, reportCount: userReports.length,
       };
     });
 
@@ -27,7 +29,7 @@ export async function onRequestGet({ env }) {
     });
   } catch (e) {
     return new Response(
-      JSON.stringify({ error: "Ranking错误: " + (e.message || String(e)) }),
+      JSON.stringify({ error: "Ranking: " + (e.message || String(e)) }),
       { status: 500, headers: { "content-type": "application/json" } }
     );
   }

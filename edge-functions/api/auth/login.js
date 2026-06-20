@@ -9,17 +9,35 @@ const DEFAULT_DB = {
   settings: { seasonStart: "2026-07-01", seasonEnd: "2026-09-30" },
 };
 
+// 内存缓存（KV不可用时兜底）
+let memoryDB = null;
+
 async function getDB(env) {
-  const raw = await env.INVEST_KV.get("db");
-  if (!raw) {
-    await env.INVEST_KV.put("db", JSON.stringify(DEFAULT_DB));
-    return JSON.parse(JSON.stringify(DEFAULT_DB));
+  // 有KV用KV
+  if (env.INVEST_KV) {
+    const raw = await env.INVEST_KV.get("db");
+    if (!raw) {
+      await env.INVEST_KV.put("db", JSON.stringify(DEFAULT_DB));
+      return JSON.parse(JSON.stringify(DEFAULT_DB));
+    }
+    return JSON.parse(raw);
   }
-  return JSON.parse(raw);
+  // 无KV用内存（函数实例存活期间有效）
+  if (!memoryDB) memoryDB = JSON.parse(JSON.stringify(DEFAULT_DB));
+  return memoryDB;
+}
+
+async function saveDB(env, db) {
+  if (env.INVEST_KV) {
+    await env.INVEST_KV.put("db", JSON.stringify(db));
+  }
+  memoryDB = db;
 }
 
 export async function onRequestPost({ request, env }) {
   try {
+    console.log("[login] KV keys:", Object.keys(env || {}));
+    console.log("[login] INVEST_KV exists:", !!env?.INVEST_KV);
     const { username, password } = await request.json();
     const db = await getDB(env);
     const user = db.users.find(
