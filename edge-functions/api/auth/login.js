@@ -1,48 +1,13 @@
-const DEFAULT_DB = {
-  users: [
-    { id: "user1", slug: "player1", name: "选手一", nickname: "待定选手1", password: "123456", bio: "个性签名未设置", initCapital: 10000 },
-    { id: "user2", slug: "player2", name: "选手二", nickname: "待定选手2", password: "123456", bio: "个性签名未设置", initCapital: 10000 },
-    { id: "user3", slug: "player3", name: "选手三", nickname: "待定选手3", password: "123456", bio: "个性签名未设置", initCapital: 10000 },
-    { id: "user4", slug: "player4", name: "选手四", nickname: "待定选手4", password: "123456", bio: "个性签名未设置", initCapital: 10000 },
-  ],
-  reports: [],
-  settings: { seasonStart: "2026-07-01", seasonEnd: "2026-09-30" },
-};
-
-// 内存缓存（KV不可用时兜底）
-let memoryDB = null;
-
-async function getDB(env) {
-  // 有KV用KV
-  if (env.INVEST_KV) {
-    const raw = await env.INVEST_KV.get("db");
-    if (!raw) {
-      await env.INVEST_KV.put("db", JSON.stringify(DEFAULT_DB));
-      return JSON.parse(JSON.stringify(DEFAULT_DB));
-    }
-    return JSON.parse(raw);
-  }
-  // 无KV用内存（函数实例存活期间有效）
-  if (!memoryDB) memoryDB = JSON.parse(JSON.stringify(DEFAULT_DB));
-  return memoryDB;
-}
-
-async function saveDB(env, db) {
-  if (env.INVEST_KV) {
-    await env.INVEST_KV.put("db", JSON.stringify(db));
-  }
-  memoryDB = db;
-}
+import { setEnv, findUser } from "../../_shared/db.js";
 
 export async function onRequestPost({ request, env }) {
   try {
+    setEnv(env);
     console.log("[login] KV keys:", Object.keys(env || {}));
-    console.log("[login] INVEST_KV exists:", !!env?.INVEST_KV);
+    console.log("[login] INVEST_KV:", !!env?.INVEST_KV);
+
     const { username, password } = await request.json();
-    const db = await getDB(env);
-    const user = db.users.find(
-      (u) => (u.slug === username || u.name === username) && u.password === password
-    );
+    const user = await findUser(username, password);
 
     if (!user) {
       return new Response(JSON.stringify({ error: "用户名或密码错误" }), {
