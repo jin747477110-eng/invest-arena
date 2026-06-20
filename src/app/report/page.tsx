@@ -13,9 +13,15 @@ interface Report {
   createdAt: string;
 }
 
+interface UserInfo {
+  id: string;
+  nickname: string;
+}
+
 export default function ReportPage() {
   const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [totalAsset, setTotalAsset] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -23,12 +29,19 @@ export default function ReportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Load reports
   async function loadReports() {
     try {
-      const res = await fetch("/api/reports");
-      const data = await res.json();
-      setReports(data);
+      const [reportsRes, rankRes] = await Promise.all([
+        fetch("/api/reports"),
+        fetch("/api/ranking"),
+      ]);
+      const reportsData = await reportsRes.json();
+      const rankData = await rankRes.json();
+      setReports(reportsData);
+      // 构建 userId → nickname 映射
+      const map: Record<string, string> = {};
+      rankData.forEach((r: any) => { map[r.userId] = r.nickname; });
+      setUserMap(map);
     } catch (e) {
       console.error(e);
     }
@@ -245,7 +258,7 @@ export default function ReportPage() {
 
         {/* History */}
         <div>
-          <h2 className="text-white font-bold mb-3">📋 我的报数记录</h2>
+          <h2 className="text-white font-bold mb-3">📋 全部报数记录</h2>
           {reports.length === 0 ? (
             <div className="text-center py-12 bg-surface-900 rounded-xl border border-gray-800">
               <div className="text-4xl mb-3">📭</div>
@@ -259,10 +272,15 @@ export default function ReportPage() {
                   className="bg-surface-900 rounded-lg p-3.5 border border-gray-800 flex items-center justify-between"
                 >
                   <div>
-                    <p className="text-white font-semibold">
-                      ¥{report.totalAsset.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-semibold">
+                        ¥{report.totalAsset.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-xs bg-surface-800 text-gold-400 px-2 py-0.5 rounded-full">
+                        {userMap[report.userId] || report.userId}
+                      </span>
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
                       {report.date}
                       {report.note && ` · ${report.note}`}
                     </p>
