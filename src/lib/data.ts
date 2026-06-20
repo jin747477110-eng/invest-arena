@@ -162,14 +162,30 @@ export async function deleteReport(reportId: string, userId: string): Promise<bo
 
 // ── Rankings ──
 
-export async function getRankings() {
+// Supabase 原始行类型
+interface UserRow {
+  id: string; slug: string; name: string; nickname: string;
+  password: string; bio: string; initcapital: number;
+}
+interface ReportRow {
+  id: string; userid: string; date: string; totalasset: number;
+  note: string; createdat: string;
+}
+
+export interface RankingItem {
+  userId: string; slug: string; name: string; nickname: string;
+  totalAsset: number; initCapital: number;
+  returnRate: number; reportCount: number;
+}
+
+export async function getRankings(): Promise<RankingItem[]> {
   const [users, reports] = await Promise.all([
-    restGet("users?select=*"),
-    restGet("reports?select=*&order=createdat.desc"),
+    restGet("users?select=*") as Promise<UserRow[]>,
+    restGet("reports?select=*&order=createdat.desc") as Promise<ReportRow[]>,
   ]);
 
-  const rankings = (users || []).map((user: any) => {
-    const userReports = (reports || []).filter((r: any) => r.userid === user.id);
+  const rankings: RankingItem[] = users.map((user) => {
+    const userReports = reports.filter((r) => r.userid === user.id);
     const initCapital = user.initcapital || 10000;
     const latestAsset = userReports.length > 0 ? userReports[0].totalasset : initCapital;
     const returnRate = ((latestAsset - initCapital) / initCapital) * 100;
